@@ -1,0 +1,609 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[english]{babel}
+\usepackage[margin=1in]{geometry}
+\usepackage{graphicx}
+\usepackage{tikz}
+\usepackage{listings}
+\usepackage{booktabs}
+\usepackage{float}
+\usepackage{enumitem}
+
+\usetikzlibrary{shapes,arrows,positioning}
+
+\lstset{
+    basicstyle=\footnotesize\ttfamily,
+    frame=single,
+    breaklines=true,
+    numbers=left,
+    numberstyle=\tiny
+}
+
+\title{\textbf{Air Cargo Booking \& Tracking System}\\
+       \large Low-Level Design Document}
+\author{Kesha\\
+        Computer Science Student}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+\newpage
+
+\section{Introduction}
+
+This document provides detailed implementation specifications for the Air Cargo Booking and Tracking System. It covers code structure, algorithms, data flows, and technical implementation details.
+
+\section{Code Architecture}
+
+\subsection{Project Structure}
+
+\begin{lstlisting}[caption=Project Directory Structure]
+air-cargo/
+├── backend/
+│   ├── src/
+│   │   ├── controllers/
+│   │   ├── models/
+│   │   ├── services/
+│   │   ├── middleware/
+│   │   └── routes/
+│   └── package.json
+└── frontend/
+    ├── src/
+    │   ├── components/
+    │   ├── pages/
+    │   ├── store/
+    │   └── services/
+    └── package.json
+\end{lstlisting}
+
+\subsection{Backend Architecture Details}
+
+\subsubsection{Controller Layer}
+Controllers handle HTTP requests and responses:
+
+\begin{lstlisting}[caption=AuthController Structure]
+class AuthController {
+  static async signup(req, res) {
+    // 1. Validate input data
+    // 2. Check if user exists
+    // 3. Hash password
+    // 4. Save user to database
+    // 5. Generate JWT token
+    // 6. Return success response
+  }
+  
+  static async login(req, res) {
+    // 1. Validate credentials
+    // 2. Check password hash
+    // 3. Generate JWT token
+    // 4. Return token
+  }
+}
+\end{lstlisting}
+
+\subsubsection{Model Layer}
+Database models with business logic:
+
+\begin{lstlisting}[caption=Booking Model Methods]
+class BookingModel {
+  static async create(bookingData) {
+    // Insert booking into database
+    // Create initial timeline event
+    // Return booking object
+  }
+  
+  static async findByUserId(userId) {
+    // Query user's bookings
+    // Join with flight data
+    // Return formatted results
+  }
+  
+  static async updateStatus(refId, status) {
+    // Update booking status
+    // Add timeline event
+    // Return success/failure
+  }
+}
+\end{lstlisting}
+
+\section{PostgreSQL Development Setup}
+
+\subsection{Development Options Without Local Installation}
+
+\subsubsection{Cloud Database Services (Free Tiers)}
+\begin{lstlisting}[caption=Free PostgreSQL Cloud Options]
+// 1. Supabase (Free tier: 500MB)
+DATABASE_URL=postgresql://postgres:[password]@db.[project].supabase.co:5432/postgres
+
+// 2. ElephantSQL (Free tier: 20MB)
+DATABASE_URL=postgres://username:password@hostname.db.elephantsql.com/dbname
+
+// 3. Neon (Free tier: 3GB)
+DATABASE_URL=postgresql://user:pass@ep-xyz.us-east-1.aws.neon.tech/dbname
+
+// 4. Railway (Free tier with usage limits)
+DATABASE_URL=postgresql://postgres:pass@containers-us-west-xyz.railway.app:port/railway
+\end{lstlisting}
+
+\subsubsection{Docker Development Setup}
+\begin{lstlisting}[caption=PostgreSQL with Docker]
+// docker-compose.yml
+version: '3.8'
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: aircargo
+      POSTGRES_USER: developer
+      POSTGRES_PASSWORD: devpass123
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
+
+// Start with: docker-compose up -d
+\end{lstlisting}
+
+\subsubsection{Hybrid Development Approach}
+\begin{lstlisting}[caption=Database Abstraction Layer]
+// config/database.js
+const config = {
+  development: {
+    // Use SQLite for local development
+    dialect: 'sqlite',
+    storage: './database.sqlite'
+  },
+  production: {
+    // Use PostgreSQL for production
+    dialect: 'postgresql',
+    url: process.env.DATABASE_URL
+  }
+};
+
+module.exports = config[process.env.NODE_ENV || 'development'];
+\end{lstlisting}
+
+\section{Database Implementation}
+
+\subsection{Table Schemas}
+
+\subsubsection{Users Table}
+\begin{lstlisting}[caption=Users Table SQL]
+CREATE TABLE users (
+  id SERIAL PRIMARY KEY,
+  email VARCHAR(255) UNIQUE NOT NULL,
+  password_hash VARCHAR(255) NOT NULL,
+  full_name VARCHAR(255) NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+\end{lstlisting}
+
+\subsubsection{Bookings Table}
+\begin{lstlisting}[caption=Bookings Table SQL]
+CREATE TABLE bookings (
+  id SERIAL PRIMARY KEY,
+  ref_id VARCHAR(50) UNIQUE NOT NULL,
+  user_id INTEGER NOT NULL,
+  origin VARCHAR(3) NOT NULL,
+  destination VARCHAR(3) NOT NULL,
+  pieces INTEGER NOT NULL,
+  weight_kg DECIMAL(10,2) NOT NULL,
+  status VARCHAR(20) DEFAULT 'CREATED',
+  flight_ids INTEGER[] NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id)
+);
+\end{lstlisting}
+
+\subsection{Database Operations}
+
+\subsubsection{Query Patterns}
+\begin{lstlisting}[caption=Common Database Queries]
+// Get user bookings with flight details
+SELECT b.*, f.flight_number, f.airline_name
+FROM bookings b
+JOIN flights f ON f.id = ANY(b.flight_ids)
+WHERE b.user_id = $1
+ORDER BY b.created_at DESC;
+
+// Get booking timeline
+SELECT te.*, b.ref_id
+FROM timeline_events te
+JOIN bookings b ON b.id = te.booking_id
+WHERE b.ref_id = $1
+ORDER BY te.created_at;
+\end{lstlisting}
+
+\section{API Implementation Details}
+
+\subsection{Authentication Middleware}
+
+\begin{lstlisting}[caption=JWT Authentication Middleware]
+const authenticateToken = (req, res, next) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+  
+  if (!token) {
+    return res.status(401).json({
+      error: 'Access token required'
+    });
+  }
+  
+  jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
+    if (err) {
+      return res.status(403).json({
+        error: 'Invalid token'
+      });
+    }
+    req.user = user;
+    next();
+  });
+};
+\end{lstlisting}
+
+\subsection{Input Validation}
+
+\begin{lstlisting}[caption=Joi Validation Schema]
+const bookingSchema = Joi.object({
+  origin: Joi.string().length(3).required(),
+  destination: Joi.string().length(3).required(),
+  pieces: Joi.number().integer().min(1).required(),
+  weight_kg: Joi.number().positive().required(),
+  flight_ids: Joi.array().items(Joi.number()).required()
+});
+\end{lstlisting}
+
+\section{Frontend Implementation}
+
+\subsection{Component Structure}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[node distance=1cm and 2cm, >=stealth]
+    % Main nodes
+    \node (app) [rectangle, draw, minimum width=1cm, minimum height=1cm] {App};
+    \node (auth) [rectangle, draw, below left=of app] {AuthPages};
+    \node (main) [rectangle, draw, below right=of app] {MainPages};
+    
+    % Auth children
+    \node (login) [rectangle, draw, below=of auth] {Login};
+    \node (signup) [rectangle, draw, left=of login] {Signup};
+    
+    % Main children
+    \node (dash) [rectangle, draw, below=of main] {Dashboard};
+    \node (booking) [rectangle, draw, left=of dash] {Booking};
+    \node (track) [rectangle, draw, right=of dash] {Tracking};
+    
+    % Connections
+    \draw[->] (app) -- (auth);
+    \draw[->] (app) -- (main);
+    \draw[->] (auth) -- (login);
+    \draw[->] (auth) -- (signup);
+    \draw[->] (main) -- (dash);
+    \draw[->] (main) -- (booking);
+    \draw[->] (main) -- (track);
+\end{tikzpicture}
+\caption{React Component Hierarchy}
+\end{figure}
+
+\subsection{State Management}
+
+\begin{lstlisting}[caption=Redux Store Structure]
+// Store slices
+const store = {
+  auth: {
+    user: null,
+    token: null,
+    isAuthenticated: false
+  },
+  bookings: {
+    userBookings: [],
+    currentBooking: null,
+    loading: false
+  },
+  routes: {
+    searchResults: [],
+    selectedRoute: null
+  }
+};
+\end{lstlisting}
+
+\subsection{API Service Layer}
+
+\begin{lstlisting}[caption=API Service Implementation]
+class ApiService {
+  static async post(endpoint, data) {
+    const token = localStorage.getItem('token');
+    
+    const response = await fetch(`/api/v1${endpoint}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify(data)
+    });
+    
+    return response.json();
+  }
+}
+\end{lstlisting}
+
+\section{Key Algorithms}
+
+\subsection{Route Search Algorithm}
+
+\begin{lstlisting}[caption=Flight Route Search Logic]
+function searchRoutes(origin, destination) {
+  // 1. Direct flights
+  const directFlights = flights.filter(f => 
+    f.origin === origin && f.destination === destination
+  );
+  
+  // 2. One-stop connections
+  const connections = [];
+  for (let flight1 of flights.filter(f => f.origin === origin)) {
+    for (let flight2 of flights.filter(f => 
+      f.origin === flight1.destination && 
+      f.destination === destination &&
+      f.departure_time > flight1.arrival_time
+    )) {
+      connections.push([flight1, flight2]);
+    }
+  }
+  
+  return { direct: directFlights, connections };
+}
+\end{lstlisting}
+
+\subsection{Booking Reference Generation}
+
+\begin{lstlisting}[caption=Unique Reference ID Generator]
+function generateBookingRef() {
+  const prefix = 'AC';
+  const timestamp = Date.now().toString(36).toUpperCase();
+  const random = Math.random().toString(36).substr(2, 4).toUpperCase();
+  return `${prefix}${timestamp}${random}`;
+}
+\end{lstlisting}
+
+\section{Error Handling}
+
+\subsection{Backend Error Handling}
+
+\begin{lstlisting}[caption=Global Error Handler]
+const errorHandler = (err, req, res, next) => {
+  console.error('Error:', err);
+  
+  // Validation errors
+  if (err.isJoi) {
+    return res.status(400).json({
+      error: 'Validation failed',
+      details: err.details
+    });
+  }
+  
+  // Database errors
+  if (err.code === '23505') { // PostgreSQL unique violation
+    return res.status(409).json({
+      error: 'Constraint violation',
+      message: 'Duplicate entry or invalid reference'
+    });
+  }
+  
+  if (err.code === '23503') { // PostgreSQL foreign key violation
+    return res.status(400).json({
+      error: 'Invalid reference',
+      message: 'Referenced record does not exist'
+    });
+  }
+  
+  // Default error
+  res.status(500).json({
+    error: 'Internal server error'
+  });
+};
+\end{lstlisting}
+
+\subsection{Frontend Error Handling}
+
+\begin{lstlisting}[caption=React Error Boundary]
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  
+  static getDerivedStateFromError(error) {
+    return { hasError: true };
+  }
+  
+  render() {
+    if (this.state.hasError) {
+      return <div>Something went wrong.</div>;
+    }
+    return this.props.children;
+  }
+}
+\end{lstlisting}
+
+\section{Security Implementation}
+
+\subsection{Password Security}
+
+\begin{lstlisting}[caption=Password Hashing]
+const bcrypt = require('bcrypt');
+
+// Hash password before storing
+const hashPassword = async (password) => {
+  const saltRounds = 10;
+  return await bcrypt.hash(password, saltRounds);
+};
+
+// Verify password during login
+const verifyPassword = async (password, hash) => {
+  return await bcrypt.compare(password, hash);
+};
+\end{lstlisting}
+
+\subsection{Input Sanitization}
+
+\begin{lstlisting}[caption=SQL Injection Prevention]
+// Using parameterized queries
+const getUserBookings = (userId) => {
+  const query = `
+    SELECT * FROM bookings 
+    WHERE user_id = ? 
+    ORDER BY created_at DESC
+  `;
+  return db.all(query, [userId]);
+};
+\end{lstlisting}
+
+\section{Testing Strategy}
+
+\subsection{Unit Testing}
+
+\begin{lstlisting}[caption=Controller Test Example]
+describe('AuthController', () => {
+  test('should create user successfully', async () => {
+    const userData = {
+      email: 'test@example.com',
+      password: 'password123',
+      full_name: 'Test User'
+    };
+    
+    const response = await request(app)
+      .post('/api/v1/auth/signup')
+      .send(userData);
+      
+    expect(response.status).toBe(201);
+    expect(response.body.data.user.email).toBe(userData.email);
+  });
+});
+\end{lstlisting}
+
+\subsection{API Testing}
+
+\begin{lstlisting}[caption=Integration Test Example]
+describe('Booking API', () => {
+  test('should create booking with valid data', async () => {
+    const bookingData = {
+      origin: 'NYC',
+      destination: 'LAX',
+      pieces: 2,
+      weight_kg: 15.5,
+      flight_ids: [1, 2]
+    };
+    
+    const response = await request(app)
+      .post('/api/v1/bookings')
+      .set('Authorization', `Bearer ${validToken}`)
+      .send(bookingData);
+      
+    expect(response.status).toBe(201);
+    expect(response.body.data.booking.ref_id).toBeDefined();
+  });
+});
+\end{lstlisting}
+
+\section{Performance Considerations}
+
+\subsection{Database Optimization}
+
+\begin{lstlisting}[caption=Database Indexes]
+-- Index for faster user lookup
+CREATE INDEX idx_users_email ON users(email);
+
+-- Index for booking queries
+CREATE INDEX idx_bookings_user_id ON bookings(user_id);
+CREATE INDEX idx_bookings_ref_id ON bookings(ref_id);
+
+-- Index for timeline events
+CREATE INDEX idx_timeline_booking_id ON timeline_events(booking_id);
+\end{lstlisting}
+
+\subsection{Frontend Optimization}
+
+\begin{lstlisting}[caption=React Performance Optimizations]
+// Lazy loading components
+const Dashboard = React.lazy(() => import('./Dashboard'));
+const BookingPage = React.lazy(() => import('./BookingPage'));
+
+// Memoization for expensive calculations
+const BookingList = React.memo(({ bookings }) => {
+  const sortedBookings = useMemo(() => 
+    bookings.sort((a, b) => new Date(b.created_at) - new Date(a.created_at)),
+    [bookings]
+  );
+  
+  return <div>{/* render bookings */}</div>;
+});
+\end{lstlisting}
+
+\section{Deployment Considerations}
+
+\subsection{Environment Configuration}
+
+\begin{lstlisting}[caption=Environment Variables]
+// .env file structure
+NODE_ENV=production
+PORT=3000
+JWT_SECRET=your_jwt_secret_here
+
+// PostgreSQL Configuration
+DATABASE_URL=postgresql://username:password@localhost:5432/aircargo
+// OR use cloud database
+DATABASE_URL=postgresql://user:pass@hostname:5432/dbname
+
+// Development alternatives
+DB_TYPE=postgresql  // or 'sqlite' for local dev
+SQLITE_PATH=./database.sqlite  // fallback for development
+
+CORS_ORIGIN=https://yourdomain.com
+\end{lstlisting}
+
+\subsection{Build Process}
+
+\begin{lstlisting}[caption=Production Build Commands]
+# Backend build
+npm run build
+
+# Frontend build
+npm run build
+npm run serve
+
+# Database setup
+npm run migrate:prod
+\end{lstlisting}
+
+\section{Conclusion}
+
+This low-level design document provides comprehensive implementation details for the Air Cargo System. Key technical achievements include:
+
+\begin{itemize}
+    \item Modular architecture with clear separation of concerns
+    \item Secure authentication and authorization
+    \item Efficient database design with proper indexing
+    \item Comprehensive error handling and validation
+    \item Performance optimizations for scalability
+    \item Thorough testing strategy
+\end{itemize}
+
+The implementation demonstrates solid software engineering principles and readiness for production deployment.
+
+\vspace{1cm}
+\hrule
+\begin{center}
+\textit{End of Document}\\
+Air Cargo System - Low-Level Design\\
+Student Project - \today
+\end{center}
+
+\end{document}
