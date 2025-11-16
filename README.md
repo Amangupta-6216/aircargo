@@ -33,6 +33,7 @@ Frontend (React)
 Backend (Node.js/Express)
         ↕
 Database (PostgreSQL)
+
 📁 Project Structure
 css
 Copy code
@@ -52,6 +53,7 @@ air-cargo/
     │   ├── store/
     │   └── services/
     └── package.json
+    
 ⚙️ Features
 1. User Authentication
 Register/Login using email & password
